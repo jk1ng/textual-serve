@@ -358,7 +358,7 @@ class Server:
                 write_str=websocket.send_str,
                 close=websocket.close,
                 download_manager=self.download_manager,
-                http_request=http_request
+                http_request=http_request,
                 debug=self.debug,
             )
             await app_service.start(width, height)
