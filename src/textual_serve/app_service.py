@@ -2,10 +2,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import asyncio
+import base64
+from dataclasses import asdict
 import io
 import json
 import os
-from typing import Awaitable, Callable, Literal
+from typing import Awaitable, Callable, Literal, Tuple
 from asyncio.subprocess import Process
 import logging
 
@@ -14,6 +16,7 @@ import uuid
 
 from textual_serve.download_manager import DownloadManager
 from textual_serve._binary_encode import load as binary_load
+from textual_serve._serializable_request import SerializableRequest
 
 log = logging.getLogger("textual-serve")
 
@@ -33,6 +36,7 @@ class AppService:
         write_str: Callable[[str], Awaitable[None]],
         close: Callable[[], Awaitable[None]],
         download_manager: DownloadManager,
+        http_request: Tuple[str, SerializableRequest] | None = None,
         debug: bool = False,
     ) -> None:
         self.app_service_id: str = uuid.uuid4().hex
@@ -53,6 +57,7 @@ class AppService:
         self._stdin: asyncio.StreamWriter | None = None
         self._exit_event = asyncio.Event()
         self._download_manager = download_manager
+        self._http_request: Tuple[str, SerializableRequest] | None = http_request
 
     @property
     def stdin(self) -> asyncio.StreamWriter:
@@ -71,6 +76,12 @@ class AppService:
             A environment dict.
         """
         environment = dict(os.environ.copy())
+        if self._http_request:
+            destination_environment_key, request = self._http_request
+            environment[destination_environment_key] = base64.urlsafe_b64encode(
+                json.dumps(asdict(request)).encode("utf-8")
+            ).decode("ascii")
+
         environment["TEXTUAL_DRIVER"] = "textual.drivers.web_driver:WebDriver"
         environment["TEXTUAL_FPS"] = "60"
         environment["TEXTUAL_COLOR_SYSTEM"] = "truecolor"

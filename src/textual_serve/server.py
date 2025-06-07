@@ -23,10 +23,12 @@ from rich.logging import RichHandler
 from rich.highlighter import RegexHighlighter
 
 from textual_serve.download_manager import DownloadManager
+from textual_serve._serializable_request import SerializableRequest
 
 from urllib.parse import urljoin, urlparse
 
 from .app_service import AppService
+
 
 log = logging.getLogger("textual-serve")
 
@@ -76,6 +78,7 @@ class Server:
         public_url: str | None = None,
         statics_path: str | os.PathLike = "./static",
         templates_path: str | os.PathLike = "./templates",
+        forward_request_to: str | None = None,
     ):
         """
 
@@ -83,13 +86,17 @@ class Server:
             app_factory: A callable that returns a new App instance.
             host: Host of web application.
             port: Port for server.
+            title: Window title of the app.
+            public_url: Public URL of the app, if different from host and port.
             statics_path: Path to statics folder. May be absolute or relative to server.py.
             templates_path" Path to templates folder. May be absolute or relative to server.py.
+            forward_request: If set, the HTTP request will be saved to the specified environment variable.
         """
         self.command = command
         self.host = host
         self.port = port
         self.title = title or command
+        self.forward_request_to = forward_request_to
         self.debug = False
 
         if public_url is None:
@@ -332,6 +339,16 @@ class Server:
         width = to_int(request.query.get("width", "80"), 80)
         height = to_int(request.query.get("height", "24"), 24)
 
+        http_request = None
+        if self.forward_request_to:
+            serialized_request = await SerializableRequest.from_request(request)
+            destination_environment_key = self.forward_request_to
+            http_request = (
+                destination_environment_key,
+                serialized_request,
+            )
+            
+
         app_service: AppService | None = None
         try:
             await websocket.prepare(request)
@@ -341,6 +358,7 @@ class Server:
                 write_str=websocket.send_str,
                 close=websocket.close,
                 download_manager=self.download_manager,
+                http_request=http_request
                 debug=self.debug,
             )
             await app_service.start(width, height)
